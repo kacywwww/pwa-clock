@@ -193,7 +193,7 @@
                 document.getElementById('hand-m').style.transform = 'rotate(' + mDeg + 'deg)';
                 document.getElementById('hand-h').style.transform = 'rotate(' + hDeg + 'deg)';
                 
-                var analogDateOpts = { month: 'short', day: '2-digit' };
+                var analogDateOpts = {weekday: 'short', month: 'short', day: '2-digit' };
                 document.getElementById('a-date').innerText = now.toLocaleDateString('en-GB', analogDateOpts).toUpperCase();
             }
         }
