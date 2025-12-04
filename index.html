@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Hybrid Clock</title>
+    <style>
+        :root {
+            --bg-color: #000000;
+            --digit-color: #e0e0e0;
+            --dim-color: #555555;
+            --accent-color: #ffa5309d;
+            --btn-bg: rgba(40, 40, 40, 0.7);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            cursor: pointer;
+        }
+
+        /* toggle switch */
+        #switch-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: var(--btn-bg);
+            border: 1px solid #444;
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            /* remove backdrop-filter as iOS 11 not support well */
+        }
+        #switch-btn svg { width: 24px; height: 24px; fill: #ddd; }
+
+        /* Share */
+        .mode-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* digital */
+        #digital-mode .date { font-size: 5vw; color: #888; margin-bottom: 2vh; text-transform: capitalize; }
+        #digital-mode .time-wrapper { display: flex; align-items: baseline; font-family: 'Courier New', Courier, monospace; line-height: 1; }
+        #digital-mode .main-time { color: var(--digit-color); font-size: 26vw; font-weight: bold; }
+        #digital-mode .seconds { color: var(--dim-color); font-size: 8vw; margin-left: 15px; min-width: 11vw; }
+
+        /* Clock Hand */
+        #analog-mode { position: relative; }
+        .clock-face {
+            width: 80vmin;
+            height: 80vmin;
+            border: 4px solid #333;
+            border-radius: 50%;
+            position: relative;
+            background: radial-gradient(circle, #111 0%, #000 100%);
+        }
+        .tick { position: absolute; width: 100%; height: 100%; top: 0; left: 0; }
+        .tick::after { content: ''; position: absolute; left: 50%; top: 0; background-color: #666; transform: translateX(-50%); }
+        .tick.major::after { width: 3px; height: 2.5vmin; background-color: #fff; }
+        .tick.minor::after { width: 1px; height: 1.5vmin; background-color: #444; }
+        
+        .numeral {
+            position: absolute; width: 100%; height: 100%; text-align: center; color: #ddd;
+            font-weight: 600; font-size: 7vmin; padding-top: 5vmin; box-sizing: border-box;
+        }
+        .hand { position: absolute; bottom: 50%; left: 50%; transform-origin: bottom center; border-radius: 4px; z-index: 10; }
+        .hand.hour { width: 2.5vmin; height: 25%; background: #fff; }
+        .hand.minute { width: 1.5vmin; height: 38%; background: #ccc; }
+        .hand.second { width: 0.5vmin; height: 42%; background: var(--accent-color); z-index: 11; }
+        .center-dot { position: absolute; width: 3vmin; height: 3vmin; background: #fff; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 12; }
+        .analog-date { position: absolute; top: 65%; width: 100%; text-align: center; color: var(--accent-color); font-size: 4vmin; font-weight: bold; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+    <div id="switch-btn">
+        <svg viewBox="0 0 24 24"><path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/></svg>
+    </div>
+    
+    <div id="digital-mode" class="mode-container">
+        <div class="date" id="d-date">Loading...</div>
+        <div class="time-wrapper">
+            <div class="main-time" id="d-time">00:00</div>
+            <div class="seconds" id="d-seconds">00</div>
+        </div>
+    </div>
+
+    <div id="analog-mode" class="mode-container">
+        <div class="clock-face">
+            <div id="ticks-container"></div>
+            <div id="numerals-container"></div>
+            <div class="hand hour" id="hand-h"></div>
+            <div class="hand minute" id="hand-m"></div>
+            <div class="hand second" id="hand-s"></div>
+            <div class="center-dot"></div>
+            <div class="analog-date" id="a-date">DATE</div>
+        </div>
+    </div>
+
+    <script>
+        // === change from padStart for ios 11===
+        function padZero(num) {
+            var s = String(num);
+            if (s.length < 2) {
+                return '0' + s;
+            }
+            return s;
+        }
+
+        var currentMode = localStorage.getItem('clockMode') || 'digital';
+
+        function init() {
+            var ticksContainer = document.getElementById('ticks-container');
+            // 
+            for (var i = 0; i < 60; i++) {
+                var tick = document.createElement('div');
+                var isMajor = (i % 5 === 0);
+                tick.className = isMajor ? 'tick major' : 'tick minor';
+                tick.style.transform = 'rotate(' + (i * 6) + 'deg)';
+                ticksContainer.appendChild(tick);
+            }
+
+            var numeralsContainer = document.getElementById('numerals-container');
+            var numbers = ['12', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'];
+            
+            numbers.forEach(function(num, index) {
+                var el = document.createElement('div');
+                el.className = 'numeral';
+                el.innerText = num;
+                el.style.transform = 'rotate(' + (index * 30) + 'deg)';
+                numeralsContainer.appendChild(el);
+            });
+
+            applyMode();
+            document.getElementById('switch-btn').addEventListener('click', toggleMode);
+        }
+
+        function toggleMode(e) {
+            if(e) e.stopPropagation();
+            currentMode = currentMode === 'digital' ? 'analog' : 'digital';
+            localStorage.setItem('clockMode', currentMode);
+            applyMode();
+        }
+
+        function applyMode() {
+            var d = document.getElementById('digital-mode');
+            var a = document.getElementById('analog-mode');
+            if (currentMode === 'digital') {
+                d.style.display = 'flex';
+                a.style.display = 'none';
+            } else {
+                d.style.display = 'none';
+                a.style.display = 'flex';
+            }
+        }
+
+        function updateClock() {
+            var now = new Date();
+            var h = now.getHours();
+            var m = now.getMinutes();
+            var s = now.getSeconds();
+            
+            if (currentMode === 'digital') {
+                var dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+                document.getElementById('d-date').innerText = now.toLocaleDateString('en-GB', dateOptions);
+                document.getElementById('d-time').innerText = padZero(h) + ':' + padZero(m);
+                document.getElementById('d-seconds').innerText = padZero(s);
+            } else {
+                var sDeg = s * 6;
+                var mDeg = m * 6 + s * 0.1;
+                var hDeg = (h % 12) * 30 + m * 0.5;
+                
+                document.getElementById('hand-s').style.transform = 'rotate(' + sDeg + 'deg)';
+                document.getElementById('hand-m').style.transform = 'rotate(' + mDeg + 'deg)';
+                document.getElementById('hand-h').style.transform = 'rotate(' + hDeg + 'deg)';
+                
+                var analogDateOpts = { month: 'short', day: '2-digit' };
+                document.getElementById('a-date').innerText = now.toLocaleDateString('en-GB', analogDateOpts).toUpperCase();
+            }
+        }
+
+        // Ensure initialization on load
+        window.onload = function() {
+            init();
+            setInterval(updateClock, 1000);
+            updateClock();
+
+            // Service Worker checking to prevent errors on unsupported browsers
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw.js').catch(function(err) {
+                    console.log('SW failed', err);
+                });
+            }
+        };
+    </script>
+</body>
+</html>
